@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+command -V gh mktemp grep >/dev/null
+
+while getopts 'ds:v' Opts; do
+    case "$Opts" in
+        d)  set -x ;;
+        s)  Suffix="$OPTARG" ;;
+        v)  Verbose=1 ;;
+        *)  cat <<'end_of_help'
+Usage: gh epmi owner1/repo1==v0.9.0 owner2/repo2
+Optional arguments:
+     -d              Enable debug mode.
+     -s .x86_64.rpm  Filter filenames by suffix. Using autodetection by default.
+     -v              Enable verbose mode.
+end_of_help
+            exit ;;
+    esac
+done
+shift $(( "$OPTIND" - 1 ))
+
+: "${Suffix:=.$( uname --machine ).$( epm print info --package-type )}"
+TmpDir="$( mktemp --directory )"
+
+for RepoTag in "$@"; do
+    mapfile -t -d '=' RepoTagArr < <(echo -n "$RepoTag")
+    Repo="${RepoTagArr[0]}"
+    if [ "${#RepoTagArr[@]}" != 1 ]; then
+        Tag="${RepoTagArr[2]}"
+    else
+        Tag="$( gh api "repos/$Repo/releases" --jq '.[0].tag_name' )"
+    fi
+    Title="Downloading release $Tag from repo $Repo end with $Suffix"
+    if [ -n "${Verbose:-}" ]; then
+        echo "$Title"
+    fi
+    mapfile -t AllAssets < <(
+        gh api "repos/$Repo/releases" --paginate \
+            --jq '.[] | select(.tag_name == "'"$Tag"'") | .assets[].name'
+    )
+    mapfile -t OurAssets < <(
+        printf '%s\0' "${AllAssets[@]}" \
+            | grep --null-data --perl-regexp -- "\Q$Suffix\E$"
+    )
+    if [ "${#OurAssets[@]}" -gt 1 ]; then
+        echo "$Title failed! Filtered more than one assets:" >&2
+        printf '%s\n' "${OurAssets[@]}" >&2
+        exit 1
+    elif [ "${#OurAssets[@]}" -eq 0 ]; then
+        echo "$Title failed! Suffix $Suffix not found in assets:" >&2
+        printf '%s\n' "${AllAssets[@]}" >&2
+        exit 2
+    fi
+    # Does it use: sha256.txt checksums.txt checksums.txt.pem checksums.txt.sig
+    gh release download "$Tag" \
+        --dir "$TmpDir" \
+        --repo "$Repo" \
+        --pattern "*$Suffix"
+done
+mapfile -t Downloaded < <( find "$TmpDir" -type f -name "*$Suffix" )
+epm install --repack "${Downloaded[@]}"
