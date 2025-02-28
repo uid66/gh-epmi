@@ -28,14 +28,14 @@ for RepoTag in "$@"; do
     if [ "${#RepoTagArr[@]}" != 1 ]; then
         Tag="${RepoTagArr[2]}"
     else
-        Tag="$( PAGER= gh api "repos/$Repo/releases" --jq '.[0].tag_name' )"
+        Tag="$( PAGER='' gh api "repos/$Repo/releases" --jq '.[0].tag_name' )"
     fi
     AssetQuery='.[] | select(.tag_name == "'"$Tag"'") | .assets[]'
     Title="Downloading file *$Suffix with release tag $Tag from repo $Repo"
     test -n "${Verbose:-}" && echo "$Title"
 
     mapfile -t Assets < <(
-        PAGER= gh api "repos/$Repo/releases" \
+        PAGER='' gh api "repos/$Repo/releases" \
             --jq "$AssetQuery"' | select( .name|endswith("'"$Suffix"'") ).name'
     )
     if [ "${#Assets[@]}" -gt 1 ]; then
@@ -44,7 +44,7 @@ for RepoTag in "$@"; do
         exit 1
     elif [ "${#Assets[@]}" -eq 0 ]; then
         echo "Suffix $Suffix not found in assets. $Title failed!" >&2
-        PAGER= gh api "repos/$Repo/releases" --jq "$AssetQuery.name" >&2
+        PAGER='' gh api "repos/$Repo/releases" --jq "$AssetQuery.name" >&2
         exit 2
     fi
     # Does it use: sha256.txt checksums.txt checksums.txt.pem checksums.txt.sig
