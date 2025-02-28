@@ -28,27 +28,23 @@ for RepoTag in "$@"; do
     if [ "${#RepoTagArr[@]}" != 1 ]; then
         Tag="${RepoTagArr[2]}"
     else
-        Tag="$( gh api "repos/$Repo/releases" --jq '.[0].tag_name' )"
+        Tag="$( PAGER= gh api "repos/$Repo/releases" --jq '.[0].tag_name' )"
     fi
-    Title="Downloading release $Tag from repo $Repo end with $Suffix"
-    if [ -n "${Verbose:-}" ]; then
-        echo "$Title"
-    fi
-    mapfile -t AllAssets < <(
-        gh api "repos/$Repo/releases" --paginate \
-            --jq '.[] | select(.tag_name == "'"$Tag"'") | .assets[].name'
+    AssetQuery='.[] | select(.tag_name == "'"$Tag"'") | .assets[]'
+    Title="Downloading file *$Suffix with release tag $Tag from repo $Repo"
+    test -n "${Verbose:-}" && echo "$Title"
+
+    mapfile -t Assets < <(
+        PAGER= gh api "repos/$Repo/releases" \
+            --jq "$AssetQuery"' | select( .name|endswith("'"$Suffix"'") ).name'
     )
-    mapfile -t OurAssets < <(
-        printf '%s\0' "${AllAssets[@]}" \
-            | grep --null-data --perl-regexp -- "\Q$Suffix\E$"
-    )
-    if [ "${#OurAssets[@]}" -gt 1 ]; then
-        echo "$Title failed! Filtered more than one assets:" >&2
-        printf '%s\n' "${OurAssets[@]}" >&2
+    if [ "${#Assets[@]}" -gt 1 ]; then
+        echo "Filtered more than one assets. $Title failed!" >&2
+        printf '%s\n' "${Assets[@]}" >&2
         exit 1
-    elif [ "${#OurAssets[@]}" -eq 0 ]; then
-        echo "$Title failed! Suffix $Suffix not found in assets:" >&2
-        printf '%s\n' "${AllAssets[@]}" >&2
+    elif [ "${#Assets[@]}" -eq 0 ]; then
+        echo "Suffix $Suffix not found in assets. $Title failed!" >&2
+        PAGER= gh api "repos/$Repo/releases" --jq "$AssetQuery.name" >&2
         exit 2
     fi
     # Does it use: sha256.txt checksums.txt checksums.txt.pem checksums.txt.sig

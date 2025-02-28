@@ -3,7 +3,6 @@ github CLI extension as wrapper for command `epm install --repack`
 # Requirements
 [eepm](https://github.com/Etersoft/eepm)
 [gh](https://cli.github.com)
-[grep](https://www.gnu.org/software/grep)
 
 # Installation
 gh extension install uid66/gh-epmi
